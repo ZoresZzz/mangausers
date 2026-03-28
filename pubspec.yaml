@@ -51,6 +51,13 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
-
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.0
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/ANH.jpg" # Đường dẫn file ảnh của bạn
+  adaptive_icon_background: "#FFFFFF"     # Màu nền cho Android
+  adaptive_icon_foreground: "assets/images/ANH.jpg"
 flutter:
   uses-material-design: true

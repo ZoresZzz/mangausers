@@ -30,7 +30,8 @@ class _PaymentPageState extends State<PaymentPage> {
   /// ===============================
   Future<void> openPayOS() async {
     try {
-      final url = Uri.parse("http://192.168.2.23:3000/create-payment");
+      final url = Uri.parse(
+          "https://interpervasive-unpolitely-frederick.ngrok-free.dev/create-payment");
 
       final res = await http.post(
         url,

@@ -15,7 +15,15 @@ class ForumPage extends StatefulWidget {
 class _ForumPageState extends State<ForumPage>
     with SingleTickerProviderStateMixin {
   late TabController _tab;
+  String selectedTag = "all";
 
+  final List<String> tags = [
+    "all",
+    "thảo luận",
+    "tìm truyện",
+    "tâm sự",
+    "chia sẻ",
+  ];
   @override
   void initState() {
     _tab = TabController(length: 3, vsync: this);
@@ -25,8 +33,84 @@ class _ForumPageState extends State<ForumPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      endDrawer: Drawer(
+        child: Container(
+          color: Colors.black,
+          child: SafeArea(
+            child: Column(
+              children: [
+                /// HEADER
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          "Danh mục",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: () => Navigator.pop(context),
+                      )
+                    ],
+                  ),
+                ),
+
+                /// LIST TAG
+                Expanded(
+                  child: ListView(
+                    children: tags.map((tag) {
+                      final isSelected = selectedTag == tag;
+
+                      return ListTile(
+                        tileColor:
+                            isSelected ? Colors.white10 : Colors.transparent,
+                        leading: Text(
+                          tag == "all" ? "🏠" : "#",
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        title: Text(
+                          tag == "all" ? "Tất cả" : tag,
+                          style: TextStyle(
+                            color: isSelected ? Colors.orange : Colors.white,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                        ),
+                        onTap: () {
+                          setState(() {
+                            selectedTag = tag;
+                          });
+                          Navigator.pop(context);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
       appBar: AppBar(
         title: const Text("Diễn đàn"),
+        actions: [
+          Builder(
+            builder: (context) => IconButton(
+              icon: const Icon(Icons.menu),
+              onPressed: () {
+                Scaffold.of(context).openEndDrawer();
+              },
+            ),
+          )
+        ],
         bottom: TabBar(
           controller: _tab,
           tabs: const [
@@ -38,10 +122,10 @@ class _ForumPageState extends State<ForumPage>
       ),
       body: TabBarView(
         controller: _tab,
-        children: const [
-          PostList(type: "recent"),
-          PostList(type: "hot"),
-          PostList(type: "me"),
+        children: [
+          PostList(type: "recent", selectedTag: selectedTag),
+          PostList(type: "hot", selectedTag: selectedTag),
+          PostList(type: "me", selectedTag: selectedTag),
         ],
       ),
       bottomNavigationBar: Padding(
@@ -94,7 +178,13 @@ class _ForumPageState extends State<ForumPage>
 
 class PostList extends StatelessWidget {
   final String type;
-  const PostList({super.key, required this.type});
+  final String selectedTag;
+
+  const PostList({
+    super.key,
+    required this.type,
+    required this.selectedTag,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +192,7 @@ class PostList extends StatelessWidget {
 
     Query query = FirebaseFirestore.instance.collection('posts');
 
-    /// 🎯 LOGIC FILTER
+    /// 🎯 FILTER THEO TYPE TRƯỚC
     if (type == "recent") {
       query = query.orderBy('createdAt', descending: true);
     } else if (type == "hot") {
@@ -118,7 +208,13 @@ class PostList extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final posts = snapshot.data!.docs;
+        final posts = snapshot.data!.docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+
+          if (selectedTag == "all") return true;
+
+          return data["tag"] == selectedTag;
+        }).toList();
 
         if (posts.isEmpty) {
           return const Center(child: Text("Không có bài viết"));
@@ -129,7 +225,7 @@ class PostList extends StatelessWidget {
           itemBuilder: (context, i) {
             final post = posts[i];
             final data = post.data() as Map<String, dynamic>;
-
+            final tag = data['tag'] ?? '';
             return Card(
               margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               child: InkWell(
@@ -184,7 +280,27 @@ class PostList extends StatelessWidget {
 
                       const SizedBox(height: 10),
 
-                      /// 🟠 TITLE (NỔI BẬT)
+                      /// 🔥 HASHTAG
+                      if (tag.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            "#$tag",
+                            style: const TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+
+                      /// 🟠 TITLE
                       Text(
                         data['title'] ?? '',
                         style: const TextStyle(

@@ -14,6 +14,7 @@ class MangaModel {
   final int likeCount;
   final int viewCount;
   final int weeklyViews;
+  final int lastChapter;
 
   MangaModel({
     required this.id,
@@ -28,6 +29,7 @@ class MangaModel {
     required this.likeCount,
     required this.viewCount,
     required this.weeklyViews,
+    required this.lastChapter,
   });
 
   factory MangaModel.fromMap(String id, Map<String, dynamic>? data) {
@@ -45,6 +47,7 @@ class MangaModel {
         likeCount: 0,
         viewCount: 0,
         weeklyViews: 0,
+        lastChapter: 0,
       );
     }
 
@@ -63,6 +66,7 @@ class MangaModel {
       likeCount: data['likeCount'] ?? 0,
       viewCount: data['viewCount'] ?? 0,
       weeklyViews: data['weeklyViews'] ?? 0,
+      lastChapter: data['lastChapter'] ?? 0,
     );
   }
 
@@ -79,6 +83,7 @@ class MangaModel {
       'likeCount': likeCount,
       'viewCount': viewCount,
       'weeklyViews': weeklyViews,
+      'lastChapter': lastChapter,
     };
   }
 }

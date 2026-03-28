@@ -18,6 +18,14 @@ class _AddPostPageState extends State<AddPostPage> {
 
   File? imageFile;
   bool loading = false;
+  String selectedTag = "thảo luận";
+
+  final List<String> tags = [
+    "thảo luận",
+    "tìm truyện",
+    "tâm sự",
+    "chia sẻ",
+  ];
 
   /// ===============================
   /// 📸 CHỌN ẢNH
@@ -38,7 +46,12 @@ class _AddPostPageState extends State<AddPostPage> {
   /// ===============================
   Future<void> submit() async {
     if (title.text.isEmpty || content.text.isEmpty) return;
-
+    if (selectedTag.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Vui lòng chọn chủ đề")),
+      );
+      return;
+    }
     setState(() => loading = true);
 
     try {
@@ -52,7 +65,7 @@ class _AddPostPageState extends State<AddPostPage> {
 
       final userData = userDoc.data();
 
-      final username = userData?['name'] ?? "User";
+      final username = userData?['username'] ?? user.email ?? "User";
       final avatar = userData?['avatar'];
 
       /// 🔥 upload ảnh nếu có
@@ -68,7 +81,8 @@ class _AddPostPageState extends State<AddPostPage> {
         "imageUrl": imageUrl,
         "userId": user.uid,
         "username": username,
-        "avatar": avatar, // ✅ QUAN TRỌNG
+        "avatar": avatar,
+        "tag": selectedTag,
         "likes": 0,
         "likedBy": [],
         "createdAt": FieldValue.serverTimestamp(),
@@ -107,6 +121,42 @@ class _AddPostPageState extends State<AddPostPage> {
               maxLines: 5,
             ),
 
+            const SizedBox(height: 15),
+
+            /// 🔥 HASHTAG
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("Chủ đề",
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: tags.map((tag) {
+                    final isSelected = selectedTag == tag;
+
+                    return ChoiceChip(
+                      label: Text("#$tag"),
+                      selected: isSelected,
+                      onSelected: (_) {
+                        setState(() {
+                          selectedTag = tag;
+                        });
+                      },
+                      selectedColor: Colors.blue,
+                      backgroundColor: Colors.grey[200],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      labelStyle: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: isSelected ? Colors.white : Colors.black,
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
             const SizedBox(height: 15),
 
             /// 📸 BUTTON CHỌN ẢNH

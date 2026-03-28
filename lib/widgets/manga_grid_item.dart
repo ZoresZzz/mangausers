@@ -74,6 +74,15 @@ class MangaGridItem extends StatelessWidget {
               fontWeight: FontWeight.w500,
             ),
           ),
+
+          /// 🔥 THÊM CÁI NÀY NGAY DƯỚI
+          Text(
+            "Chap ${manga.lastChapter ?? 0}",
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.grey,
+            ),
+          ),
         ],
       ),
     );

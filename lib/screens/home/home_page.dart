@@ -3,6 +3,7 @@ import '../../services/manga_service.dart';
 import '../../models/manga_model.dart';
 import '../../widgets/manga_grid_item.dart';
 import '../manga_detail/manga_detail_page.dart';
+import 'all_manga_page.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -49,7 +50,7 @@ class HomePage extends StatelessWidget {
               const Padding(
                 padding: EdgeInsets.all(12),
                 child: Text(
-                  "🎯 Đề xuất",
+                  "🎯 Đề xuất ngẫu nhiên",
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -90,14 +91,32 @@ class HomePage extends StatelessWidget {
               const SizedBox(height: 20),
 
               /// ===== NEWLY UPDATED =====
-              const Padding(
-                padding: EdgeInsets.all(12),
-                child: Text(
-                  "🆕 Mới cập nhật",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      "🆕 Mới cập nhật",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    /// 🔥 NÚT XEM THÊM
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AllMangaPage(mangas: newUpdated),
+                          ),
+                        );
+                      },
+                      child: const Text("Xem thêm"),
+                    )
+                  ],
                 ),
               ),
 

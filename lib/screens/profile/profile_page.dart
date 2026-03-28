@@ -208,18 +208,23 @@ class ProfilePage extends StatelessWidget {
                           final points = data['points'] ?? 0;
                           final price = data['price'] ?? 0;
                           final status = data['status'] ?? "pending";
+                          final method = data['method'] ?? 'QR';
 
+                          /// 🔥 XÓA LUÔN PAYOS CHƯA SUCCESS
+                          if (method == "PayOS" && status != "success") {
+                            return const SizedBox();
+                          }
                           Color statusColor;
                           String statusText;
 
-                          if (status == "approved") {
+                          if (status == "success") {
                             statusColor = Colors.green;
                             statusText = "Đã nạp";
                           } else if (status == "rejected") {
                             statusColor = Colors.grey;
                             statusText = "Từ chối";
                           } else {
-                            statusColor = Colors.red;
+                            statusColor = Colors.orange;
                             statusText = "Đang chờ";
                           }
 
@@ -306,11 +311,11 @@ void showRechargeSheet(BuildContext context, String userId) {
               ),
             ),
             const SizedBox(height: 20),
-            rechargeItem(context, userId, "Gói 1", 15000, 100),
-            rechargeItem(context, userId, "Gói 2", 50000, 333),
-            rechargeItem(context, userId, "Gói 3", 100000, 666),
-            rechargeItem(context, userId, "Gói 4", 200000, 1333),
-            rechargeItem(context, userId, "Gói 5", 500000, 3333),
+            rechargeItem(context, userId, "Gói 1", 15000, 15),
+            rechargeItem(context, userId, "Gói 2", 50000, 50),
+            rechargeItem(context, userId, "Gói 3", 100000, 100),
+            rechargeItem(context, userId, "Gói 4", 200000, 200),
+            rechargeItem(context, userId, "Gói 5", 500000, 500),
             const SizedBox(height: 20),
           ],
         ),

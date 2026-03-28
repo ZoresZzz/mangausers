@@ -12,7 +12,7 @@ class MyShelfPage extends StatelessWidget {
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('My Shelf'),
+          title: const Text('Kệ Sách Của Tôi'),
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Thư viện'),
