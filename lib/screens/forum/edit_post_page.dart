@@ -1,46 +1,92 @@
-import 'dart:io';
-import 'package:image_picker/image_picker.dart';
-import '../../services/cloudinary_service.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:typed_data';
+import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
-class AddPostPage extends StatefulWidget {
-  const AddPostPage({super.key});
+class EditPostPage extends StatefulWidget {
+  final String postId;
+  final String oldTitle;
+  final String oldContent;
+  final String oldImage;
+
+  const EditPostPage({
+    super.key,
+    required this.postId,
+    required this.oldTitle,
+    required this.oldContent,
+    required this.oldImage,
+  });
 
   @override
-  State<AddPostPage> createState() => _AddPostPageState();
+  State<EditPostPage> createState() => _EditPostPageState();
 }
 
-class _AddPostPageState extends State<AddPostPage> {
-  final titleController = TextEditingController();
-  final contentController = TextEditingController();
+class _EditPostPageState extends State<EditPostPage> {
+  late TextEditingController titleController;
+  late TextEditingController contentController;
 
-  File? imageFile;
-  bool loading = false;
-  String selectedTag = "thảo luận";
+  Uint8List? newImage; // Ảnh mới nếu người dùng chọn
+  bool _isLoading = false; // Trạng thái loading
+  bool _removeOldImage = false; // Đánh dấu nếu người dùng muốn xóa ảnh cũ
 
-  final List<String> tags = ["thảo luận", "tìm truyện", "tâm sự", "chia sẻ"];
+  @override
+  void initState() {
+    super.initState();
+    titleController = TextEditingController(text: widget.oldTitle);
+    contentController = TextEditingController(text: widget.oldContent);
+  }
+
+  @override
+  void dispose() {
+    titleController.dispose();
+    contentController.dispose();
+    super.dispose();
+  }
 
   /// ===============================
-  /// 📸 CHỌN ẢNH
+  /// 📸 CHỌN ẢNH TỪ THƯ VIỆN
   /// ===============================
   Future<void> pickImage() async {
-    final picker = ImagePicker();
-    final picked =
-        await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+    final img = await ImagePicker()
+        .pickImage(source: ImageSource.gallery, imageQuality: 80);
 
-    if (picked != null) {
+    if (img != null) {
+      final bytes = await img.readAsBytes();
       setState(() {
-        imageFile = File(picked.path);
+        newImage = bytes;
+        _removeOldImage = false; // Chọn ảnh mới thì hủy cờ xóa ảnh cũ
       });
     }
   }
 
   /// ===============================
-  /// 🚀 SUBMIT (ĐĂNG BÀI)
+  /// ☁️ UPLOAD CLOUDINARY
   /// ===============================
-  Future<void> submit() async {
+  Future<String> uploadToCloudinary(Uint8List imageBytes) async {
+    const cloudName = "dj70orbki";
+    const uploadPreset = "ml_default";
+
+    final uri =
+        Uri.parse("https://api.cloudinary.com/v1_1/$cloudName/image/upload");
+    final request = http.MultipartRequest("POST", uri);
+
+    request.fields['upload_preset'] = uploadPreset;
+    request.files.add(http.MultipartFile.fromBytes('file', imageBytes,
+        filename: "post_update.jpg"));
+
+    final response = await request.send();
+    final resData = await response.stream.bytesToString();
+    final jsonData = jsonDecode(resData);
+
+    return jsonData['secure_url'];
+  }
+
+  /// ===============================
+  /// 🚀 CẬP NHẬT BÀI VIẾT
+  /// ===============================
+  Future<void> updatePost() async {
     final titleText = titleController.text.trim();
     final contentText = contentController.text.trim();
 
@@ -52,41 +98,41 @@ class _AddPostPageState extends State<AddPostPage> {
       return;
     }
 
-    setState(() => loading = true);
+    setState(() => _isLoading = true);
 
     try {
-      final user = FirebaseAuth.instance.currentUser!;
+      String imageUrl = widget.oldImage;
 
-      // 1. Lấy thông tin user từ Firestore
-      final userDoc = await FirebaseFirestore.instance
-          .collection("users")
-          .doc(user.uid)
-          .get();
-      final userData = userDoc.data();
-      final username = userData?['username'] ?? user.displayName ?? "User";
-      final avatar = userData?['avatar'];
-
-      // 2. Upload ảnh lên Cloudinary nếu có
-      String? imageUrl;
-      if (imageFile != null) {
-        imageUrl = await CloudinaryService.uploadImage(imageFile!);
+      // Nếu người dùng chọn xóa ảnh cũ
+      if (_removeOldImage) {
+        imageUrl = "";
       }
 
-      // 3. Lưu Post vào Firestore
-      await FirebaseFirestore.instance.collection("posts").add({
+      // Nếu người dùng chọn ảnh mới
+      if (newImage != null) {
+        imageUrl = await uploadToCloudinary(newImage!);
+      }
+
+      await FirebaseFirestore.instance
+          .collection("posts")
+          .doc(widget.postId)
+          .update({
         "title": titleText,
         "content": contentText,
         "imageUrl": imageUrl,
-        "userId": user.uid,
-        "username": username,
-        "avatar": avatar,
-        "tag": selectedTag,
-        "likes": 0,
-        "likedBy": [],
-        "createdAt": FieldValue.serverTimestamp(),
+        "updatedAt":
+            FieldValue.serverTimestamp(), // Sử dụng serverTimestamp cho đồng bộ
       });
 
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Cập nhật bài viết thành công!",
+                  style: TextStyle(color: Colors.white)),
+              backgroundColor: Colors.green),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -94,105 +140,61 @@ class _AddPostPageState extends State<AddPostPage> {
         );
       }
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Logic xác định có hiển thị ảnh hay không
+    final bool hasImage =
+        newImage != null || (widget.oldImage.isNotEmpty && !_removeOldImage);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0F0F14), // Nền Dark Mode sâu
+      backgroundColor: const Color(0xFF0F0F14),
       appBar: AppBar(
         backgroundColor: const Color(0xFF0F0F14),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close_rounded, color: Colors.white),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+              color: Colors.white, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          "Tạo bài viết mới",
-          style: TextStyle(
-              color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20),
-        ),
+        title: const Text("Chỉnh sửa bài viết",
+            style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 20)),
         centerTitle: true,
       ),
       body: Stack(
         children: [
           SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.all(20),
             physics: const BouncingScrollPhysics(),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 10),
-
-                // 🏷️ CHỌN CHỦ ĐỀ (TAGS)
-                const Text("Chủ đề",
-                    style: TextStyle(
-                        color: Colors.white70,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15)),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: tags.map((tag) {
-                    final isSelected = selectedTag == tag;
-                    return GestureDetector(
-                      onTap: () => setState(() => selectedTag = tag),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          gradient: isSelected
-                              ? const LinearGradient(colors: [
-                                  Color(0xFFFF4D4D),
-                                  Color(0xFFF9CB28)
-                                ])
-                              : null,
-                          color: isSelected ? null : const Color(0xFF1C1C1E),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                              color: isSelected
-                                  ? Colors.transparent
-                                  : Colors.white10),
-                        ),
-                        child: Text(
-                          "#$tag",
-                          style: TextStyle(
-                              color: isSelected ? Colors.black : Colors.white54,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-
-                const SizedBox(height: 30),
-
-                // ✍️ NHẬP TIÊU ĐỀ
+                // ✍️ TIÊU ĐỀ
                 _buildLabel("Tiêu đề bài viết"),
                 _buildTextField(
-                  controller: titleController,
-                  hint: "Nhập tiêu đề thu hút sự chú ý...",
-                  maxLines: 1,
-                ),
+                    controller: titleController,
+                    hint: "Nhập tiêu đề...",
+                    maxLines: 1),
 
                 const SizedBox(height: 20),
 
-                // ✍️ NHẬP NỘI DUNG
+                // ✍️ NỘI DUNG
                 _buildLabel("Nội dung chi tiết"),
                 _buildTextField(
-                  controller: contentController,
-                  hint: "Bạn muốn chia sẻ điều gì với mọi người?",
-                  maxLines: 8,
-                ),
+                    controller: contentController,
+                    hint: "Nhập nội dung...",
+                    maxLines: 8),
 
                 const SizedBox(height: 30),
 
-                // 🖼️ KHU VỰC CHỌN ẢNH
-                _buildLabel("Đính kèm hình ảnh"),
+                // 🖼️ KHU VỰC ẢNH PREVIEW
+                _buildLabel("Ảnh đính kèm"),
                 const SizedBox(height: 10),
                 GestureDetector(
                   onTap: pickImage,
@@ -204,22 +206,29 @@ class _AddPostPageState extends State<AddPostPage> {
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: Colors.white10),
                     ),
-                    child: imageFile != null
+                    child: hasImage
                         ? Stack(
                             fit: StackFit.expand,
                             children: [
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(16),
-                                child:
-                                    Image.file(imageFile!, fit: BoxFit.cover),
+                                child: newImage != null
+                                    ? Image.memory(newImage!, fit: BoxFit.cover)
+                                    : Image.network(widget.oldImage,
+                                        fit: BoxFit.cover),
                               ),
                               Positioned(
                                 top: 10,
                                 right: 10,
                                 child: GestureDetector(
-                                  onTap: () => setState(() => imageFile = null),
+                                  onTap: () {
+                                    setState(() {
+                                      newImage = null;
+                                      _removeOldImage = true;
+                                    });
+                                  },
                                   child: Container(
-                                    padding: const EdgeInsets.all(4),
+                                    padding: const EdgeInsets.all(6),
                                     decoration: const BoxDecoration(
                                         color: Colors.black54,
                                         shape: BoxShape.circle),
@@ -237,7 +246,7 @@ class _AddPostPageState extends State<AddPostPage> {
                                   color: Colors.white.withOpacity(0.2),
                                   size: 48),
                               const SizedBox(height: 12),
-                              const Text("Tải ảnh lên từ thư viện",
+                              const Text("Bấm để chọn ảnh mới",
                                   style: TextStyle(
                                       color: Colors.white24, fontSize: 13)),
                             ],
@@ -247,12 +256,12 @@ class _AddPostPageState extends State<AddPostPage> {
 
                 const SizedBox(height: 40),
 
-                // 🚀 NÚT ĐĂNG
+                // 🚀 NÚT CẬP NHẬT
                 SizedBox(
                   width: double.infinity,
                   height: 55,
                   child: ElevatedButton(
-                    onPressed: loading ? null : submit,
+                    onPressed: _isLoading ? null : updatePost,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orangeAccent,
                       foregroundColor: Colors.black,
@@ -261,13 +270,13 @@ class _AddPostPageState extends State<AddPostPage> {
                           borderRadius: BorderRadius.circular(16)),
                       elevation: 0,
                     ),
-                    child: loading
+                    child: _isLoading
                         ? const SizedBox(
                             width: 24,
                             height: 24,
                             child: CircularProgressIndicator(
                                 color: Colors.black, strokeWidth: 3))
-                        : const Text("ĐĂNG BÀI",
+                        : const Text("CẬP NHẬT BÀI VIẾT",
                             style: TextStyle(
                                 fontWeight: FontWeight.w900,
                                 fontSize: 16,
@@ -279,10 +288,10 @@ class _AddPostPageState extends State<AddPostPage> {
             ),
           ),
 
-          // Lớp phủ khi đang loading
-          if (loading)
+          // LỚP MÀN MỜ KHI ĐANG UPLOAD
+          if (_isLoading)
             Container(
-              color: Colors.black45,
+              color: Colors.black54,
               child: const Center(
                   child: CircularProgressIndicator(color: Colors.orangeAccent)),
             ),
@@ -290,6 +299,10 @@ class _AddPostPageState extends State<AddPostPage> {
       ),
     );
   }
+
+  // =========================================
+  // HELPER WIDGETS
+  // =========================================
 
   Widget _buildLabel(String text) {
     return Padding(
@@ -302,11 +315,10 @@ class _AddPostPageState extends State<AddPostPage> {
     );
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String hint,
-    required int maxLines,
-  }) {
+  Widget _buildTextField(
+      {required TextEditingController controller,
+      required String hint,
+      required int maxLines}) {
     return TextField(
       controller: controller,
       maxLines: maxLines,
@@ -318,13 +330,12 @@ class _AddPostPageState extends State<AddPostPage> {
         fillColor: const Color(0xFF1C1C1E),
         contentPadding: const EdgeInsets.all(16),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: Colors.white10),
-        ),
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Colors.white10)),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: Colors.orangeAccent, width: 1.5),
-        ),
+            borderRadius: BorderRadius.circular(16),
+            borderSide:
+                const BorderSide(color: Colors.orangeAccent, width: 1.5)),
       ),
     );
   }

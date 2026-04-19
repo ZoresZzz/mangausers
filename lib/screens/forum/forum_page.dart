@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'add_post_page.dart';
 import 'post_detail_page.dart';
 import '../verify_phone/verify_phone_page.dart';
+import 'package:intl/intl.dart';
+import 'notification_page.dart';
 
 class ForumPage extends StatefulWidget {
   const ForumPage({super.key});
@@ -22,8 +24,9 @@ class _ForumPageState extends State<ForumPage>
     "thảo luận",
     "tìm truyện",
     "tâm sự",
-    "chia sẻ",
+    "chia sẻ"
   ];
+
   @override
   void initState() {
     _tab = TabController(length: 3, vsync: this);
@@ -33,89 +36,86 @@ class _ForumPageState extends State<ForumPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      endDrawer: Drawer(
-        child: Container(
-          color: Colors.black,
-          child: SafeArea(
-            child: Column(
-              children: [
-                /// HEADER
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      const Expanded(
+      backgroundColor: const Color(0xFF0F0F14),
+      endDrawer: _buildDrawer(),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0F0F14),
+        elevation: 0,
+        title: const Text(
+          "Diễn Đàn",
+          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22),
+        ),
+
+        actions: [
+          /// 🔔 NOTIFICATION
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection("notifications")
+                .where("userId",
+                    isEqualTo: FirebaseAuth.instance.currentUser!.uid)
+                .where("isRead", isEqualTo: false)
+                .snapshots(),
+            builder: (context, snapshot) {
+              int count = snapshot.hasData ? snapshot.data!.docs.length : 0;
+
+              return Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications, color: Colors.white),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const NotificationPage(),
+                        ),
+                      );
+                    },
+                  ),
+
+                  /// 🔴 BADGE
+                  if (count > 0)
+                    Positioned(
+                      right: 6,
+                      top: 6,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                         child: Text(
-                          "Danh mục",
-                          style: TextStyle(
+                          "$count",
+                          style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 18,
+                            fontSize: 10,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white),
-                        onPressed: () => Navigator.pop(context),
-                      )
-                    ],
-                  ),
-                ),
-
-                /// LIST TAG
-                Expanded(
-                  child: ListView(
-                    children: tags.map((tag) {
-                      final isSelected = selectedTag == tag;
-
-                      return ListTile(
-                        tileColor:
-                            isSelected ? Colors.white10 : Colors.transparent,
-                        leading: Text(
-                          tag == "all" ? "🏠" : "#",
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                        title: Text(
-                          tag == "all" ? "Tất cả" : tag,
-                          style: TextStyle(
-                            color: isSelected ? Colors.orange : Colors.white,
-                            fontWeight: isSelected
-                                ? FontWeight.bold
-                                : FontWeight.normal,
-                          ),
-                        ),
-                        onTap: () {
-                          setState(() {
-                            selectedTag = tag;
-                          });
-                          Navigator.pop(context);
-                        },
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ],
-            ),
+                    )
+                ],
+              );
+            },
           ),
-        ),
-      ),
-      appBar: AppBar(
-        title: const Text("Diễn đàn"),
-        actions: [
+
+          /// ⚙️ FILTER BUTTON
           Builder(
             builder: (context) => IconButton(
-              icon: const Icon(Icons.menu),
-              onPressed: () {
-                Scaffold.of(context).openEndDrawer();
-              },
+              icon: const Icon(Icons.tune_rounded, color: Colors.white),
+              onPressed: () => Scaffold.of(context).openEndDrawer(),
             ),
-          )
+          ),
         ],
+
+        /// 🔥 TABBAR PHẢI NẰM Ở ĐÂY
         bottom: TabBar(
           controller: _tab,
+          indicatorColor: Colors.orangeAccent,
+          indicatorWeight: 3,
+          labelStyle: const TextStyle(fontWeight: FontWeight.bold),
           tabs: const [
-            Tab(text: "Gần đây"),
-            Tab(text: "Nổi bật"),
+            Tab(text: "Mới nhất"),
+            Tab(text: "Xu hướng"),
             Tab(text: "Của tôi"),
           ],
         ),
@@ -128,71 +128,104 @@ class _ForumPageState extends State<ForumPage>
           PostList(type: "me", selectedTag: selectedTag),
         ],
       ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.all(12),
-        child: SizedBox(
-          height: 50,
-          child: ElevatedButton.icon(
-            onPressed: () async {
-              final user = FirebaseAuth.instance.currentUser!;
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _handleCreatePost,
+        backgroundColor: Colors.orangeAccent,
+        icon:
+            const Icon(Icons.edit_note_rounded, color: Colors.black, size: 28),
+        label: const Text("Đăng bài",
+            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
 
-              final userDoc = await FirebaseFirestore.instance
-                  .collection("users")
-                  .doc(user.uid)
-                  .get();
-
-              final phone = userDoc.data()?['phone'];
-
-              if (phone == null || phone.isEmpty) {
-                /// ❌ chưa xác thực
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text("Bạn cần xác thực số điện thoại")),
-                );
-
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const VerifyPhonePage()),
-                );
-                return;
-              }
-
-              /// ✅ đã xác thực → cho đăng bài
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AddPostPage()),
-              );
-            },
-            icon: const Icon(Icons.edit),
-            label: const Text("Đăng bài"),
+  Widget _buildDrawer() {
+    return Drawer(
+      child: Container(
+        color: const Color(0xFF1A1A1A),
+        child: SafeArea(
+          child: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(20),
+                child: Text("Khám phá chủ đề",
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900)),
+              ),
+              Expanded(
+                child: ListView(
+                  children: tags.map((tag) {
+                    final isSelected = selectedTag == tag;
+                    return ListTile(
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 24),
+                      leading: Icon(
+                          tag == "all"
+                              ? Icons.grid_view_rounded
+                              : Icons.tag_rounded,
+                          color: isSelected
+                              ? Colors.orangeAccent
+                              : Colors.white54),
+                      title: Text(
+                          tag == "all" ? "Tất cả bài viết" : tag.toUpperCase(),
+                          style: TextStyle(
+                              color: isSelected
+                                  ? Colors.orangeAccent
+                                  : Colors.white,
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal)),
+                      onTap: () {
+                        setState(() => selectedTag = tag);
+                        Navigator.pop(context);
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
-}
 
-////////////////////////////////////////////////////////
-/// 🔥 LIST COMPONENT (DÙNG CHUNG)
-////////////////////////////////////////////////////////
+  Future<void> _handleCreatePost() async {
+    final user = FirebaseAuth.instance.currentUser!;
+    final userDoc = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(user.uid)
+        .get();
+    final phone = userDoc.data()?['phone'];
+
+    if (phone == null || phone.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Vui lòng xác thực SĐT để đăng bài")));
+      Navigator.push(
+          context, MaterialPageRoute(builder: (_) => const VerifyPhonePage()));
+      return;
+    }
+
+    if (!mounted) return;
+    Navigator.push(
+        context, MaterialPageRoute(builder: (_) => const AddPostPage()));
+  }
+}
 
 class PostList extends StatelessWidget {
   final String type;
   final String selectedTag;
 
-  const PostList({
-    super.key,
-    required this.type,
-    required this.selectedTag,
-  });
+  const PostList({super.key, required this.type, required this.selectedTag});
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser!;
-
     Query query = FirebaseFirestore.instance.collection('posts');
 
-    /// 🎯 FILTER THEO TYPE TRƯỚC
     if (type == "recent") {
       query = query.orderBy('createdAt', descending: true);
     } else if (type == "hot") {
@@ -204,125 +237,95 @@ class PostList extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: query.snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+        if (!snapshot.hasData)
+          return const Center(
+              child: CircularProgressIndicator(color: Colors.orangeAccent));
 
         final posts = snapshot.data!.docs.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
-
-          if (selectedTag == "all") return true;
-
-          return data["tag"] == selectedTag;
+          return selectedTag == "all" ? true : data["tag"] == selectedTag;
         }).toList();
 
         if (posts.isEmpty) {
-          return const Center(child: Text("Không có bài viết"));
+          return const Center(
+              child: Text("Chưa có bài viết nào ở đây",
+                  style: TextStyle(color: Colors.white54)));
         }
 
         return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 80),
           itemCount: posts.length,
           itemBuilder: (context, i) {
-            final post = posts[i];
-            final data = post.data() as Map<String, dynamic>;
-            final tag = data['tag'] ?? '';
+            final data = posts[i].data() as Map<String, dynamic>;
+            final postId = posts[i].id;
+
             return Card(
-              margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              color: const Color(0xFF1C1C1E),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              margin: const EdgeInsets.only(bottom: 16),
               child: InkWell(
-                onTap: () {
-                  Navigator.push(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => PostDetailPage(postId: post.id),
-                    ),
-                  );
-                },
+                        builder: (_) => PostDetailPage(postId: postId))),
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      /// 👤 USER + TIME
                       Row(
                         children: [
                           CircleAvatar(
-                            radius: 14,
-                            backgroundImage: (data['avatar'] != null &&
-                                    data['avatar'].toString().isNotEmpty)
-                                ? NetworkImage(data['avatar'])
-                                : null,
-                            child: (data['avatar'] == null ||
-                                    data['avatar'].toString().isEmpty)
-                                ? Text((data['username'] ?? "U")[0])
+                            radius: 18,
+                            backgroundColor:
+                                Colors.orangeAccent.withOpacity(0.1),
+                            backgroundImage:
+                                (data['avatar']?.isNotEmpty ?? false)
+                                    ? NetworkImage(data['avatar'])
+                                    : null,
+                            child: (data['avatar']?.isEmpty ?? true)
+                                ? Text(data['username']?[0] ?? "U",
+                                    style: const TextStyle(
+                                        color: Colors.orangeAccent))
                                 : null,
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  data['username'] ?? "Unknown",
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                                Text(
-                                  timeAgo(data['createdAt']),
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey,
-                                  ),
-                                ),
+                                Text(data['username'] ?? "User",
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14)),
+                                Text(timeAgo(data['createdAt']),
+                                    style: const TextStyle(
+                                        color: Colors.white38, fontSize: 11)),
                               ],
                             ),
                           ),
+                          if (data['tag'] != null) _buildTagBadge(data['tag']),
                         ],
                       ),
-
-                      const SizedBox(height: 10),
-
-                      /// 🔥 HASHTAG
-                      if (tag.isNotEmpty)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: 6),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            "#$tag",
-                            style: const TextStyle(
-                              color: Colors.blue,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-
-                      /// 🟠 TITLE
-                      Text(
-                        data['title'] ?? '',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange,
-                        ),
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      /// ❤️ + 💬
+                      const SizedBox(height: 14),
+                      Text(data['title'] ?? '',
+                          style: const TextStyle(
+                              color: Colors.orangeAccent,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                              height: 1.3)),
+                      const SizedBox(height: 14),
                       Row(
                         children: [
-                          const Icon(Icons.favorite,
-                              size: 16, color: Colors.red),
-                          const SizedBox(width: 4),
-                          Text("${data['likes'] ?? 0}"),
-                          const SizedBox(width: 15),
-                          const Icon(Icons.comment, size: 16),
-                          const SizedBox(width: 4),
-                          CommentCount(postId: post.id),
+                          _buildStatItem(Icons.favorite_rounded,
+                              Colors.redAccent, "${data['likes'] ?? 0}"),
+                          const SizedBox(width: 20),
+                          _buildStatItem(
+                              Icons.chat_bubble_rounded, Colors.blueAccent, "",
+                              isComment: true, postId: postId),
                         ],
                       ),
                     ],
@@ -333,6 +336,37 @@ class PostList extends StatelessWidget {
           },
         );
       },
+    );
+  }
+
+  Widget _buildTagBadge(String tag) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+          color: Colors.blueAccent.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8)),
+      child: Text("#$tag",
+          style: const TextStyle(
+              color: Colors.blueAccent,
+              fontSize: 11,
+              fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Widget _buildStatItem(IconData icon, Color color, String count,
+      {bool isComment = false, String? postId}) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: color.withOpacity(0.8)),
+        const SizedBox(width: 6),
+        isComment
+            ? CommentCount(postId: postId!)
+            : Text(count,
+                style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold)),
+      ],
     );
   }
 }
@@ -349,13 +383,12 @@ class CommentCount extends StatelessWidget {
           .where("postId", isEqualTo: postId)
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Text("💬 0");
-        }
-
-        final count = snapshot.data!.docs.length;
-
-        return Text("💬 $count");
+        final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
+        return Text("$count",
+            style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                fontWeight: FontWeight.bold));
       },
     );
   }
@@ -363,29 +396,10 @@ class CommentCount extends StatelessWidget {
 
 String timeAgo(Timestamp? timestamp) {
   if (timestamp == null) return "Vừa xong";
-
-  final date = timestamp.toDate();
-  final now = DateTime.now();
-  final diff = now.difference(date);
-
-  String time;
-
-  if (diff.inSeconds < 60) {
-    time = "Vừa xong";
-  } else if (diff.inMinutes < 60) {
-    time = "${diff.inMinutes} phút trước";
-  } else if (diff.inHours < 24) {
-    time = "${diff.inHours} giờ trước";
-  } else if (diff.inDays < 7) {
-    time = "${diff.inDays} ngày trước";
-  } else {
-    time = "";
-  }
-
-  /// 🔥 FORMAT NGÀY GIỜ
-  final fullDate =
-      "${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')} "
-      "${date.day}/${date.month}/${date.year}";
-
-  return time.isNotEmpty ? "$time • $fullDate" : fullDate;
+  final diff = DateTime.now().difference(timestamp.toDate());
+  if (diff.inMinutes < 1) return "Vừa xong";
+  if (diff.inMinutes < 60) return "${diff.inMinutes} phút trước";
+  if (diff.inHours < 24) return "${diff.inHours} giờ trước";
+  if (diff.inDays < 7) return "${diff.inDays} ngày trước";
+  return DateFormat("HH:mm dd/MM/yyyy").format(timestamp.toDate());
 }

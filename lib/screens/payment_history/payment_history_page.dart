@@ -46,14 +46,14 @@ class PaymentHistoryPage extends StatelessWidget {
               Color statusColor;
               String statusText;
 
-              if (status == "approved") {
+              if (status == "success" || status == "approved") {
                 statusColor = Colors.green;
                 statusText = "Đã nạp";
               } else if (status == "rejected") {
                 statusColor = Colors.grey;
                 statusText = "Bị từ chối";
               } else {
-                statusColor = Colors.red;
+                statusColor = Colors.orange;
                 statusText = "Đang chờ";
               }
 

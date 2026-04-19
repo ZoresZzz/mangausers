@@ -20,43 +20,48 @@ class MangaDetailPage extends StatefulWidget {
 class _MangaDetailPageState extends State<MangaDetailPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  @override
-  void initState() {
-    super.initState();
+  // Lấy UID an toàn, trả về null nếu chưa đăng nhập
+  String? get currentUid => FirebaseAuth.instance.currentUser?.uid;
+
+  // Hàm thông báo yêu cầu đăng nhập
+  void _showLoginRequiredMsg() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Bạn cần đăng nhập để sử dụng tính năng này!",
+            style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.redAccent,
+      ),
+    );
   }
 
-  @override
-  void dispose() {
-    super.dispose();
-  }
+  // =========================================
+  // LOGIC XỬ LÝ DỮ LIỆU
+  // =========================================
 
   Future<void> unlockChapter(ChapterModel chapter) async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
+    if (currentUid == null) return _showLoginRequiredMsg();
 
-    final userRef = _firestore.collection('users').doc(uid);
-
+    final userRef = _firestore.collection('users').doc(currentUid);
     final userDoc = await userRef.get();
-    final data = userDoc.data();
+    int points = userDoc.data()?['points'] ?? 0;
 
-    int points = data?['points'] ?? 0;
-
-    /// ❌ Không đủ điểm
     if (points < chapter.price) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Không đủ điểm để mở khóa chương")),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Không đủ điểm để mở khóa chương",
+                style: TextStyle(color: Colors.white)),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
       return;
     }
 
-    /// ✅ Trừ điểm
-    await userRef.update({
-      'points': FieldValue.increment(-chapter.price),
-    });
-
-    /// ✅ Mở khóa chương
+    await userRef.update({'points': FieldValue.increment(-chapter.price)});
     await _firestore
         .collection('users')
-        .doc(uid)
+        .doc(currentUid)
         .collection('unlockedChapters')
         .doc('${widget.manga.id}_${chapter.id}')
         .set({
@@ -65,113 +70,98 @@ class _MangaDetailPageState extends State<MangaDetailPage> {
       'unlockedAt': FieldValue.serverTimestamp(),
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Mở khóa thành công (-${chapter.price} điểm)")),
-    );
-
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Mở khóa thành công (-${chapter.price} điểm)",
+              style: const TextStyle(color: Colors.white)),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
     setState(() {});
   }
 
   Stream<bool> isChapterUnlockedStream(ChapterModel chapter) {
-    if (!chapter.isLocked) {
-      return Stream.value(true);
-    }
-
-    final uid = FirebaseAuth.instance.currentUser!.uid;
+    if (!chapter.isLocked) return Stream.value(true);
+    if (currentUid == null)
+      return Stream.value(false); // Chưa đăng nhập thì chắc chắn chưa mở khoá
 
     return _firestore
         .collection('users')
-        .doc(uid)
+        .doc(currentUid)
         .collection('unlockedChapters')
         .doc('${widget.manga.id}_${chapter.id}')
         .snapshots()
         .map((doc) => doc.exists);
   }
 
-  /// =========================
-  /// TOGGLE LƯU TRUYỆN
-  /// =========================
   Future<void> toggleLibrary() async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
+    if (currentUid == null) return _showLoginRequiredMsg();
 
     final ref = _firestore
         .collection('users')
-        .doc(uid)
+        .doc(currentUid)
         .collection('library')
         .doc(widget.manga.id);
-
     final doc = await ref.get();
 
-    /// ❌ Nếu đã lưu → xóa khỏi thư viện
     if (doc.exists) {
       await ref.delete();
-
-      /// Hủy nhận thông báo
       await FirebaseMessaging.instance
           .unsubscribeFromTopic("manga_${widget.manga.id}");
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Đã xóa khỏi thư viện")),
-      );
-    }
-
-    /// ✅ Nếu chưa lưu → thêm vào thư viện
-    else {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Đã xóa khỏi thư viện")));
+    } else {
       await ref.set({
         'title': widget.manga.title,
         'coverUrl': widget.manga.coverUrl,
         'author': widget.manga.author,
         'savedAt': FieldValue.serverTimestamp(),
       });
-
-      /// Đăng ký nhận thông báo
       await FirebaseMessaging.instance
           .subscribeToTopic("manga_${widget.manga.id}");
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Đã thêm vào thư viện")),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text("Đã thêm vào thư viện",
+                  style: TextStyle(color: Colors.white)),
+              backgroundColor: Colors.green),
+        );
+      }
     }
   }
 
-  /// =========================
-  /// TOGGLE YÊU THÍCH
-  /// =========================
   Future<void> toggleFavorite() async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
+    if (currentUid == null) return _showLoginRequiredMsg();
 
     final favRef = _firestore
         .collection('users')
-        .doc(uid)
+        .doc(currentUid)
         .collection('favorites')
         .doc(widget.manga.id);
-
     final mangaRef = _firestore.collection('mangas').doc(widget.manga.id);
-
     final doc = await favRef.get();
 
     if (doc.exists) {
       await favRef.delete();
-      await mangaRef.update({
-        'likeCount': FieldValue.increment(-1),
-      });
+      await mangaRef.update({'likeCount': FieldValue.increment(-1)});
     } else {
       await favRef.set({
         'title': widget.manga.title,
         'coverUrl': widget.manga.coverUrl,
-        'author': widget.manga.author,
+        'author': widget.manga.author
       });
-
-      await mangaRef.update({
-        'likeCount': FieldValue.increment(1),
-      });
+      await mangaRef.update({'likeCount': FieldValue.increment(1)});
     }
   }
 
   Future<void> increaseView() async {
     await _firestore.collection('mangas').doc(widget.manga.id).update({
       'viewCount': FieldValue.increment(1),
-      'weeklyViews': FieldValue.increment(1),
+      'weeklyViews': FieldValue.increment(1)
     });
   }
 
@@ -181,436 +171,604 @@ class _MangaDetailPageState extends State<MangaDetailPage> {
         .doc(widget.manga.id)
         .collection('chapters')
         .doc(chapterId)
-        .update({
-      'viewCount': FieldValue.increment(1),
-    });
+        .update({'viewCount': FieldValue.increment(1)});
   }
 
-  Widget _buildStatusChip(String status) {
-    final isCompleted = status == 'completed';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: isCompleted ? Colors.green : Colors.orange,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        isCompleted ? 'Đã hoàn thành' : 'Đang tiến hành',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
+  // =========================================
+  // GIAO DIỆN (UI)
+  // =========================================
 
   @override
   Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: Text(widget.manga.title),
-        actions: [
-          /// ===== BOOKMARK =====
-          StreamBuilder<DocumentSnapshot>(
-            stream: _firestore
-                .collection('users')
-                .doc(uid)
-                .collection('library')
-                .doc(widget.manga.id)
-                .snapshots(),
-            builder: (context, snapshot) {
-              final isSaved = snapshot.data?.exists ?? false;
-
-              return IconButton(
-                icon: Icon(
-                  isSaved ? Icons.bookmark : Icons.bookmark_border,
-                  color: isSaved ? Colors.amber : Colors.white,
-                ),
-                onPressed: toggleLibrary,
-              );
-            },
+      backgroundColor: const Color(0xFF0F0F14), // Dark Mode chuẩn
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          /// ===== 1. HEADER CUỘN ĐỘNG (SLIVER APP BAR) =====
+          SliverAppBar(
+            backgroundColor: const Color(0xFF0F0F14),
+            expandedHeight: 320,
+            pinned: true,
+            elevation: 0,
+            leading: IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.4),
+                    shape: BoxShape.circle),
+                child: const Icon(Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white, size: 18),
+              ),
+              onPressed: () => Navigator.pop(context),
+            ),
+            actions: [
+              _buildLibraryButton(),
+              _buildFavoriteButton(),
+            ],
+            flexibleSpace: FlexibleSpaceBar(
+              background: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(
+                    widget.manga.bannerUrl ?? widget.manga.coverUrl,
+                    fit: BoxFit.cover,
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF0F0F14),
+                          const Color(0xFF0F0F14).withOpacity(0.8),
+                          Colors.transparent
+                        ],
+                        stops: const [0.0, 0.4, 1.0],
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 20,
+                    left: 20,
+                    right: 20,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                  color: Colors.black.withOpacity(0.8),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 10))
+                            ],
+                            border: Border.all(
+                                color: Colors.white.withOpacity(0.2), width: 1),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.network(widget.manga.coverUrl,
+                                height: 160, width: 110, fit: BoxFit.cover),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              _buildStatusBadge(widget.manga.status),
+                              const SizedBox(height: 8),
+                              Text(
+                                widget.manga.title,
+                                style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                    height: 1.2),
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                widget.manga.author,
+                                style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.orangeAccent,
+                                    fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
 
-          /// ===== FAVORITE =====
-          StreamBuilder<DocumentSnapshot>(
+          /// ===== 2. THỐNG KÊ =====
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: _buildStatsRow(),
+            ),
+          ),
+
+          /// ===== 3. THỂ LOẠI & MÔ TẢ =====
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      children: widget.manga.genres.map((genre) {
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: () {
+                              Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) =>
+                                          GenreMangaPage(genre: genre)));
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                    color: Colors.white.withOpacity(0.1)),
+                              ),
+                              child: Text(genre,
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text("Nội Dung",
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 10),
+                  Text(widget.manga.description,
+                      style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.white.withOpacity(0.7),
+                          height: 1.5)),
+                  const SizedBox(height: 20),
+                  const Text("Danh Sách Chương",
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900)),
+                ],
+              ),
+            ),
+          ),
+
+          /// ===== 4. DANH SÁCH CHƯƠNG =====
+          StreamBuilder<QuerySnapshot>(
             stream: _firestore
-                .collection('users')
-                .doc(uid)
-                .collection('favorites')
+                .collection('mangas')
                 .doc(widget.manga.id)
+                .collection('chapters')
+                .orderBy('number', descending: true)
                 .snapshots(),
             builder: (context, snapshot) {
-              final isLiked = snapshot.data?.exists ?? false;
-
-              return TweenAnimationBuilder(
-                tween: Tween(begin: 1.0, end: isLiked ? 1.2 : 1.0),
-                duration: const Duration(milliseconds: 200),
-                builder: (context, double scale, child) {
-                  return Transform.scale(
-                    scale: scale,
-                    child: child,
-                  );
-                },
-                child: IconButton(
-                  icon: Icon(
-                    isLiked ? Icons.favorite : Icons.favorite_border,
-                    color: isLiked ? Colors.red : Colors.white,
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(30),
+                    child: Center(
+                        child: CircularProgressIndicator(
+                            color: Colors.orangeAccent)),
                   ),
-                  onPressed: () async {
-                    await toggleFavorite();
-                  },
+                );
+              }
+
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(30),
+                    child: Center(
+                      child: Text(
+                        'Chưa có chương nào được cập nhật.',
+                        style: TextStyle(color: Colors.white.withOpacity(0.5)),
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              final chapters = snapshot.data!.docs
+                  .map((doc) => ChapterModel.fromMap(
+                      doc.id, doc.data() as Map<String, dynamic>))
+                  .toList();
+
+              return SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final chapter = chapters[index];
+                      final readerIndex = chapters.length - 1 - index;
+
+                      return StreamBuilder<bool>(
+                        stream: isChapterUnlockedStream(chapter),
+                        builder: (context, unlockSnapshot) {
+                          final isUnlocked = unlockSnapshot.data ?? false;
+                          final isLockedAndNeedsPay =
+                              chapter.isLocked && !isUnlocked;
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1C1C1E),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: () => _handleChapterTap(
+                                    chapter, chapters, readerIndex, isUnlocked),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        chapter.number
+                                            .toString()
+                                            .padLeft(2, '0'),
+                                        style: TextStyle(
+                                            color:
+                                                Colors.white.withOpacity(0.15),
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.w900),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              chapter.title.isNotEmpty
+                                                  ? chapter.title
+                                                  : "Chương ${chapter.number}",
+                                              style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.bold),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Row(
+                                              children: [
+                                                const Icon(
+                                                    Icons
+                                                        .remove_red_eye_rounded,
+                                                    size: 14,
+                                                    color: Colors.blueAccent),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  chapter.viewCount.toString(),
+                                                  style: TextStyle(
+                                                      color: Colors.white
+                                                          .withOpacity(0.6),
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w600),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: EdgeInsets.symmetric(
+                                            horizontal:
+                                                isLockedAndNeedsPay ? 10 : 0,
+                                            vertical:
+                                                isLockedAndNeedsPay ? 6 : 0),
+                                        decoration: BoxDecoration(
+                                          color: isLockedAndNeedsPay
+                                              ? Colors.orangeAccent
+                                                  .withOpacity(0.15)
+                                              : Colors.transparent,
+                                          borderRadius:
+                                              BorderRadius.circular(20),
+                                        ),
+                                        child: isLockedAndNeedsPay
+                                            ? Row(
+                                                children: [
+                                                  Text('${chapter.price}',
+                                                      style: const TextStyle(
+                                                          color: Colors
+                                                              .orangeAccent,
+                                                          fontWeight:
+                                                              FontWeight.w900,
+                                                          fontSize: 14)),
+                                                  const SizedBox(width: 4),
+                                                  const Icon(Icons.lock_rounded,
+                                                      color:
+                                                          Colors.orangeAccent,
+                                                      size: 16),
+                                                ],
+                                              )
+                                            : Container(
+                                                padding:
+                                                    const EdgeInsets.all(8),
+                                                decoration: BoxDecoration(
+                                                    color: Colors.greenAccent
+                                                        .withOpacity(0.1),
+                                                    shape: BoxShape.circle),
+                                                child: const Icon(
+                                                    Icons.play_arrow_rounded,
+                                                    color: Colors.greenAccent,
+                                                    size: 20),
+                                              ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                    childCount: chapters.length,
+                  ),
                 ),
               );
             },
           ),
         ],
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          /// ===== COVER =====
-          Stack(
-            clipBehavior: Clip.none,
+    );
+  }
+
+  // =========================================
+  // SUB-WIDGETS & HELPERS
+  // =========================================
+
+  Widget _buildStatusBadge(String status) {
+    final isCompleted = status == 'completed';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: isCompleted
+            ? Colors.greenAccent.withOpacity(0.2)
+            : Colors.blueAccent.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+            color: isCompleted ? Colors.greenAccent : Colors.blueAccent,
+            width: 0.5),
+      ),
+      child: Text(
+        isCompleted ? 'HOÀN THÀNH' : 'ĐANG TIẾN HÀNH',
+        style: TextStyle(
+            color: isCompleted ? Colors.greenAccent : Colors.blueAccent,
+            fontSize: 10,
+            fontWeight: FontWeight.w900),
+      ),
+    );
+  }
+
+  Widget _buildStatsRow() {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: _firestore.collection('mangas').doc(widget.manga.id).snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const SizedBox();
+        }
+        final data = snapshot.data!.data() as Map<String, dynamic>?;
+        final likeCount = data?['likeCount'] ?? 0;
+        final viewCount = data?['viewCount'] ?? 0;
+
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+          decoration: BoxDecoration(
+              color: const Color(0xFF1C1C1E),
+              borderRadius: BorderRadius.circular(16)),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              /// ===============================
-              /// 🖼️ BANNER (ẢNH NGANG)
-              /// ===============================
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  bottom: Radius.circular(20),
-                ),
-                child: Image.network(
-                  widget.manga.bannerUrl ?? widget.manga.coverUrl,
-                  height: 200,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
-              ),
-
-              /// GRADIENT (CHO DỄ ĐỌC CHỮ)
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.9),
-                      ],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                    ),
-                  ),
-                ),
-              ),
-
-              /// ===============================
-              /// 📘 COVER FLOAT
-              /// ===============================
-              Positioned(
-                bottom: -60,
-                left: 20,
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.6),
-                        blurRadius: 10,
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      widget.manga.coverUrl,
-                      height: 120,
-                      width: 80,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-              ),
+              _statItem(Icons.favorite_rounded, Colors.pinkAccent,
+                  likeCount.toString(), "Lượt thích"),
+              Container(
+                  width: 1, height: 30, color: Colors.white.withOpacity(0.1)),
+              _statItem(Icons.visibility_rounded, Colors.blueAccent,
+                  viewCount.toString(), "Lượt xem"),
             ],
           ),
+        );
+      },
+    );
+  }
 
-          /// 🔥 CHỪA CHỖ CHO COVER FLOAT
-          const SizedBox(height: 70),
-
-          /// ===== INFO =====
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        widget.manga.title,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    _buildStatusChip(widget.manga.status),
-                  ],
-                ),
-
-                const SizedBox(height: 8),
-
-                Text(
-                  'Author: ${widget.manga.author}',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.white70,
-                  ),
-                ),
-
-                const SizedBox(height: 6),
-
-                /// ===== LIKE COUNT =====
-                StreamBuilder<DocumentSnapshot>(
-                  stream: _firestore
-                      .collection('mangas')
-                      .doc(widget.manga.id)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const SizedBox();
-
-                    final data = snapshot.data!.data() as Map<String, dynamic>?;
-                    final likeCount = data?['likeCount'] ?? 0;
-
-                    return Row(
-                      children: [
-                        const Icon(Icons.favorite, color: Colors.red, size: 16),
-                        const SizedBox(width: 5),
-                        Text(
-                          likeCount.toString(),
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                        const SizedBox(width: 15),
-                        const Icon(Icons.remove_red_eye,
-                            color: Colors.white70, size: 16),
-                        const SizedBox(width: 5),
-                        Text(
-                          (data?['viewCount'] ?? 0).toString(),
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-
-                const SizedBox(height: 12),
-
-                /// ===== GENRES =====
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: widget.manga.genres.map((genre) {
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => GenreMangaPage(genre: genre),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.deepPurple,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          genre,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-
-                const SizedBox(height: 12),
-
-                Text(
-                  widget.manga.description,
-                  style: const TextStyle(
-                    fontSize: 14,
+  Widget _statItem(IconData icon, Color iconColor, String value, String label) {
+    return Row(
+      children: [
+        Icon(icon, color: iconColor, size: 24),
+        const SizedBox(width: 10),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value,
+                style: const TextStyle(
                     color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900)),
+            Text(label,
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.5),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLibraryButton() {
+    if (currentUid == null) {
+      return IconButton(
+        icon: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.4), shape: BoxShape.circle),
+          child: const Icon(Icons.bookmark_border_rounded,
+              color: Colors.white, size: 20),
+        ),
+        onPressed: _showLoginRequiredMsg,
+      );
+    }
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: _firestore
+          .collection('users')
+          .doc(currentUid)
+          .collection('library')
+          .doc(widget.manga.id)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final isSaved = snapshot.data?.exists ?? false;
+        return IconButton(
+          icon: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.4), shape: BoxShape.circle),
+            child: Icon(
+                isSaved
+                    ? Icons.bookmark_rounded
+                    : Icons.bookmark_border_rounded,
+                color: isSaved ? Colors.amber : Colors.white,
+                size: 20),
           ),
+          onPressed: toggleLibrary,
+        );
+      },
+    );
+  }
 
-          const Divider(color: Colors.white24),
+  Widget _buildFavoriteButton() {
+    if (currentUid == null) {
+      return IconButton(
+        icon: Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.4), shape: BoxShape.circle),
+          child: const Icon(Icons.favorite_border_rounded,
+              color: Colors.white, size: 20),
+        ),
+        onPressed: _showLoginRequiredMsg,
+      );
+    }
 
-          /// ===== CHAPTER LIST =====
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _firestore
-                  .collection('mangas')
-                  .doc(widget.manga.id)
-                  .collection('chapters')
-                  .orderBy('number')
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+    return StreamBuilder<DocumentSnapshot>(
+      stream: _firestore
+          .collection('users')
+          .doc(currentUid)
+          .collection('favorites')
+          .doc(widget.manga.id)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final isLiked = snapshot.data?.exists ?? false;
+        return IconButton(
+          icon: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.4), shape: BoxShape.circle),
+            child: Icon(
+                isLiked
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                color: isLiked ? Colors.pinkAccent : Colors.white,
+                size: 20),
+          ),
+          onPressed: toggleFavorite,
+        );
+      },
+    );
+  }
 
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(
-                    child: Text(
-                      'No chapters yet',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  );
-                }
+  Future<void> _handleChapterTap(
+      ChapterModel chapter,
+      List<ChapterModel> allChapters,
+      int indexForReader,
+      bool isUnlocked) async {
+    if (!chapter.isLocked || isUnlocked) {
+      await increaseView();
+      await increaseChapterView(chapter.id);
 
-                final chapters = snapshot.data!.docs
-                    .map((doc) => ChapterModel.fromMap(
-                          doc.id,
-                          doc.data() as Map<String, dynamic>,
-                        ))
-                    .toList();
+      final ascChapters = List<ChapterModel>.from(allChapters)
+        ..sort((a, b) => a.number.compareTo(b.number));
 
-                return ListView.separated(
-                  itemCount: chapters.length,
-                  separatorBuilder: (_, __) =>
-                      const Divider(color: Colors.white12),
-                  itemBuilder: (context, index) {
-                    final chapter = chapters[index];
+      if (mounted) {
+        Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => ReaderPage(
+                    mangaId: widget.manga.id,
+                    chapters: ascChapters,
+                    currentIndex: indexForReader)));
+      }
+      return;
+    }
 
-                    return StreamBuilder<bool>(
-                      stream: isChapterUnlockedStream(chapter),
-                      builder: (context, unlockSnapshot) {
-                        final isUnlocked = unlockSnapshot.data ?? false;
+    // Nếu chưa đăng nhập thì không hiện form mua, bắt đăng nhập trước
+    if (currentUid == null) return _showLoginRequiredMsg();
 
-                        return ListTile(
-                          title: Text(
-                            'Chapter ${chapter.number}',
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                chapter.title,
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Row(
-                                children: [
-                                  const Icon(Icons.remove_red_eye,
-                                      size: 14, color: Colors.white54),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    chapter.viewCount.toString(),
-                                    style: const TextStyle(
-                                      color: Colors.white54,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          trailing: chapter.isLocked && !isUnlocked
-                              ? Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      '${chapter.price} 💎',
-                                      style:
-                                          const TextStyle(color: Colors.orange),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    const Icon(Icons.lock, color: Colors.red),
-                                  ],
-                                )
-                              : const Icon(Icons.chevron_right,
-                                  color: Colors.white),
-                          onTap: () async {
-                            if (!chapter.isLocked) {
-                              await increaseView(); // tăng view
-                              await increaseChapterView(
-                                  chapter.id); // tăng view chapter
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => ReaderPage(
-                                    mangaId: widget.manga.id,
-                                    chapters: chapters,
-                                    currentIndex: index,
-                                  ),
-                                ),
-                              );
-                              return;
-                            }
-
-                            if (isUnlocked) {
-                              await increaseView();
-                              await increaseChapterView(chapter.id);
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => ReaderPage(
-                                    mangaId: widget.manga.id,
-                                    chapters: chapters,
-                                    currentIndex: index,
-                                  ),
-                                ),
-                              );
-                            } else {
-                              showDialog(
-                                context: context,
-                                builder: (_) => AlertDialog(
-                                  title: const Text("Chương bị khóa"),
-                                  content: Text(
-                                      "Mở khóa chương này với ${chapter.price} điểm?"),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context),
-                                      child: const Text("Hủy"),
-                                    ),
-                                    TextButton(
-                                      onPressed: () async {
-                                        Navigator.pop(context);
-                                        await unlockChapter(chapter);
-                                      },
-                                      child: const Text("Mở khóa"),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }
-                          },
-                        );
-                      },
-                    );
-                  },
-                );
-              },
-            ),
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1C1C1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Chương có phí",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Text(
+            "Sử dụng ${chapter.price} điểm để mở khóa vĩnh viễn chương này?",
+            style: TextStyle(color: Colors.white.withOpacity(0.8))),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Hủy", style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orangeAccent,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10))),
+            onPressed: () async {
+              Navigator.pop(context);
+              await unlockChapter(chapter);
+            },
+            child: const Text("Mở khóa",
+                style: TextStyle(
+                    color: Colors.black87, fontWeight: FontWeight.w900)),
           ),
         ],
       ),

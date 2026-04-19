@@ -15,66 +15,87 @@ class _DiscoverTabState extends State<DiscoverTab> {
   String selectedGenre = "All";
 
   /// ===============================
-  /// 🔥 SHOW ALL GENRES (BOTTOM SHEET)
+  /// 🔥 BẢNG CHỌN THỂ LOẠI (BOTTOM SHEET)
   /// ===============================
   void _showAllGenres(List<String> genres) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF1C1C1E),
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) {
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              const Text(
-                "Chọn thể loại",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 15),
-              Expanded(
-                child: GridView.builder(
-                  itemCount: genres.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    childAspectRatio: 2.5,
-                  ),
-                  itemBuilder: (context, index) {
-                    final genre = genres[index];
-                    final isSelected = genre == selectedGenre;
-
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          selectedGenre = genre;
-                        });
-                        Navigator.pop(context);
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color:
-                              isSelected ? Colors.deepPurple : Colors.white12,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          genre,
-                          style: const TextStyle(color: Colors.white),
-                        ),
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          minChildSize: 0.4,
+          expand: false,
+          builder: (context, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(10))),
+                  const SizedBox(height: 20),
+                  const Text("Tất cả thể loại",
+                      style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white)),
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: GridView.builder(
+                      controller: scrollController,
+                      itemCount: genres.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        childAspectRatio: 2.2,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
                       ),
-                    );
-                  },
-                ),
+                      itemBuilder: (context, index) {
+                        final genre = genres[index];
+                        final isSelected = genre == selectedGenre;
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() => selectedGenre = genre);
+                            Navigator.pop(context);
+                          },
+                          child: Container(
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? Colors.orangeAccent
+                                  : Colors.white.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color: isSelected
+                                      ? Colors.transparent
+                                      : Colors.white10),
+                            ),
+                            child: Text(genre,
+                                style: TextStyle(
+                                    color: isSelected
+                                        ? Colors.black
+                                        : Colors.white70,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13)),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -85,113 +106,98 @@ class _DiscoverTabState extends State<DiscoverTab> {
     return Column(
       children: [
         /// ===============================
-        /// 🔍 SEARCH
+        /// 🔍 THANH TÌM KIẾM (MODERN SEARCH)
         /// ===============================
         Padding(
-          padding: const EdgeInsets.all(12),
-          child: TextField(
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: 'Tìm theo tên truyện hoặc tác giả',
-              hintStyle: const TextStyle(color: Colors.white54),
-              prefixIcon: const Icon(Icons.search, color: Colors.white),
-              filled: true,
-              fillColor: Colors.white12,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20),
-                borderSide: BorderSide.none,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
+            ),
+            child: TextField(
+              style: const TextStyle(color: Colors.white),
+              onChanged: (value) =>
+                  setState(() => _keyword = value.trim().toLowerCase()),
+              decoration: InputDecoration(
+                hintText: 'Tên truyện, tác giả...',
+                hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                prefixIcon: const Icon(Icons.search_rounded,
+                    color: Colors.orangeAccent, size: 22),
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
               ),
             ),
-            onChanged: (value) {
-              setState(() {
-                _keyword = value.trim().toLowerCase();
-              });
-            },
           ),
         ),
 
         /// ===============================
-        /// 🎯 GENRE FILTER + XEM THÊM
+        /// 🎯 LỌC THỂ LOẠI (GENRE CHIPS)
         /// ===============================
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('mangas').snapshots(),
           builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const SizedBox(
-                height: 45,
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
+            if (!snapshot.hasData) return const SizedBox(height: 40);
 
-            if (snapshot.hasError) {
-              return SizedBox(
-                height: 45,
-                child: Center(
-                  child: Text(
-                    "Lỗi: ${snapshot.error}",
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                ),
-              );
-            }
-
-            /// 🔥 LẤY GENRE
             Set<String> genreSet = {};
-
             for (var doc in snapshot.data!.docs) {
-              final data = doc.data() as Map<String, dynamic>;
-              final List list = data['genres'] ?? [];
-
-              for (var g in list) {
-                genreSet.add(g.toString());
-              }
+              final List list =
+                  (doc.data() as Map<String, dynamic>)['genres'] ?? [];
+              for (var g in list) genreSet.add(g.toString());
             }
-
             final genres = ["All", ...genreSet.toList()..sort()];
+            final displayGenres = genres.take(6).toList();
 
-            const int maxShow = 6;
-            final displayGenres = genres.take(maxShow).toList();
-            final hasMore = genres.length > maxShow;
-
-            return SizedBox(
-              height: 45,
+            return Container(
+              height: 38,
+              padding: const EdgeInsets.only(left: 16),
               child: ListView(
                 scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
                 children: [
-                  /// GENRE NHỎ
                   ...displayGenres.map((genre) {
                     final isSelected = genre == selectedGenre;
-
                     return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      child: ChoiceChip(
-                        label: Text(
-                          genre,
-                          style: TextStyle(
-                            color: isSelected ? Colors.black : Colors.white,
+                      padding: const EdgeInsets.only(right: 10),
+                      child: GestureDetector(
+                        onTap: () => setState(() => selectedGenre = genre),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 18),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            gradient: isSelected
+                                ? const LinearGradient(colors: [
+                                    Color(0xFFFF4D4D),
+                                    Color(0xFFF9CB28)
+                                  ])
+                                : null,
+                            color: isSelected
+                                ? null
+                                : Colors.white.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(20),
                           ),
+                          child: Text(genre,
+                              style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.black
+                                      : Colors.white70,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13)),
                         ),
-                        selected: isSelected,
-                        selectedColor: Colors.white,
-                        backgroundColor: Colors.white12,
-                        onSelected: (_) {
-                          setState(() {
-                            selectedGenre = genre;
-                          });
-                        },
                       ),
                     );
                   }),
-
-                  /// 🔥 XEM THÊM
-                  if (hasMore)
+                  if (genres.length > 6)
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      child: ActionChip(
-                        label: const Text("Xem thêm"),
-                        onPressed: () {
-                          _showAllGenres(genres);
-                        },
+                      padding: const EdgeInsets.only(right: 16),
+                      child: TextButton.icon(
+                        onPressed: () => _showAllGenres(genres),
+                        icon: const Icon(Icons.add_circle_outline_rounded,
+                            size: 18, color: Colors.orangeAccent),
+                        label: const Text("Xem thêm",
+                            style: TextStyle(
+                                color: Colors.orangeAccent,
+                                fontWeight: FontWeight.bold)),
                       ),
                     ),
                 ],
@@ -200,10 +206,10 @@ class _DiscoverTabState extends State<DiscoverTab> {
           },
         ),
 
-        const SizedBox(height: 10),
+        const SizedBox(height: 20),
 
         /// ===============================
-        /// 📚 LIST MANGA
+        /// 📚 DANH SÁCH TRUYỆN (RESULT LIST)
         /// ===============================
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
@@ -212,74 +218,119 @@ class _DiscoverTabState extends State<DiscoverTab> {
                 .orderBy('createdAt', descending: true)
                 .snapshots(),
             builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              if (snapshot.hasError) {
-                return Center(
-                  child: Text(
-                    "Lỗi: ${snapshot.error}",
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                );
-              }
+              if (snapshot.connectionState == ConnectionState.waiting)
+                return const Center(
+                    child:
+                        CircularProgressIndicator(color: Colors.orangeAccent));
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+                return const Center(
+                    child: Text('Không tìm thấy truyện phù hợp',
+                        style: TextStyle(color: Colors.white38)));
 
               final mangas = snapshot.data!.docs
                   .map((doc) => MangaModel.fromMap(
-                        doc.id,
-                        doc.data() as Map<String, dynamic>,
-                      ))
+                      doc.id, doc.data() as Map<String, dynamic>))
                   .where((manga) {
                 final matchKeyword = _keyword.isEmpty ||
                     manga.title.toLowerCase().contains(_keyword) ||
                     manga.author.toLowerCase().contains(_keyword);
-
                 final matchGenre = selectedGenre == "All" ||
                     manga.genres.contains(selectedGenre);
-
                 return matchKeyword && matchGenre;
               }).toList();
 
-              if (mangas.isEmpty) {
-                return const Center(
-                  child: Text(
-                    'Không có kết quả',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                );
-              }
-
               return ListView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+                physics: const BouncingScrollPhysics(),
                 itemCount: mangas.length,
                 itemBuilder: (context, index) {
                   final manga = mangas[index];
-
-                  return ListTile(
-                    leading: ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: Image.network(
-                        manga.coverUrl,
-                        width: 50,
-                        fit: BoxFit.cover,
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: InkWell(
+                      onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => MangaDetailPage(manga: manga))),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Row(
+                        children: [
+                          // Thumbnail
+                          Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                    color: Colors.black.withOpacity(0.4),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 4))
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(manga.coverUrl,
+                                  width: 70, height: 100, fit: BoxFit.cover),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          // Content
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(manga.title,
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                        height: 1.2),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis),
+                                const SizedBox(height: 6),
+                                Text(manga.author,
+                                    style: const TextStyle(
+                                        color: Colors.white54,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w500)),
+                                const SizedBox(height: 8),
+                                // Genres Badge nhỏ
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: manga.genres
+                                        .take(3)
+                                        .map((g) => Container(
+                                              margin: const EdgeInsets.only(
+                                                  right: 6),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 3),
+                                              decoration: BoxDecoration(
+                                                  color: Colors.white
+                                                      .withOpacity(0.05),
+                                                  borderRadius:
+                                                      BorderRadius.circular(6),
+                                                  border: Border.all(
+                                                      color: Colors.white10)),
+                                              child: Text(g,
+                                                  style: const TextStyle(
+                                                      color: Colors.white38,
+                                                      fontSize: 10,
+                                                      fontWeight:
+                                                          FontWeight.bold)),
+                                            ))
+                                        .toList(),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.arrow_forward_ios_rounded,
+                              color: Colors.white10, size: 16),
+                        ],
                       ),
                     ),
-                    title: Text(
-                      manga.title,
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                    subtitle: Text(
-                      manga.author,
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => MangaDetailPage(manga: manga),
-                        ),
-                      );
-                    },
                   );
                 },
               );

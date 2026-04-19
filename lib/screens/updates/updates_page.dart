@@ -6,7 +6,7 @@ import '../manga_detail/manga_detail_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UpdatesPage extends StatefulWidget {
-  UpdatesPage({super.key});
+  const UpdatesPage({super.key});
 
   @override
   State<UpdatesPage> createState() => _UpdatesPageState();
@@ -15,77 +15,10 @@ class UpdatesPage extends StatefulWidget {
 class _UpdatesPageState extends State<UpdatesPage> {
   DateTime selectedDate = DateTime.now();
   final service = MangaService();
-  final ScrollController _scrollController = ScrollController();
   Set<DateTime> datesWithManga = {};
-  Widget _buildBanner() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF0D0D0D), Color(0xFF1A1A1A)],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            "MANGABOXVN",
-            style: TextStyle(
-              color: Colors.white54,
-              fontSize: 12,
-              letterSpacing: 2,
-            ),
-          ),
 
-          const SizedBox(height: 10),
-
-          const Text(
-            "Chào mừng bạn đến với MangaBoxVN",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          const SizedBox(height: 10),
-
-          const Text(
-            "Cập nhật những chapter mới nhất mỗi ngày",
-            style: TextStyle(
-              color: Colors.white70,
-            ),
-          ),
-
-          const SizedBox(height: 20),
-
-          /// 🔥 BUTTON
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.transparent,
-              side: const BorderSide(color: Colors.white),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-            onPressed: () {
-              /// 🔥 SCROLL XUỐNG
-              _scrollController.animateTo(
-                _scrollController.position.maxScrollExtent *
-                    0.2, // chỉnh số này nếu chưa đúng vị trí
-                duration: const Duration(milliseconds: 500),
-                curve: Curves.easeInOut,
-              );
-            },
-            child: const Text("Truyện cập nhật"),
-          )
-        ],
-      ),
-    );
-  }
+  int totalManga = 0;
+  int totalChapters = 0;
 
   @override
   void initState() {
@@ -93,13 +26,9 @@ class _UpdatesPageState extends State<UpdatesPage> {
     loadStats();
   }
 
-  int totalManga = 0;
-  int totalChapters = 0;
-
   Future<void> loadStats() async {
     final mangaSnap =
         await FirebaseFirestore.instance.collection("mangas").get();
-
     int chapterCount = 0;
 
     for (var doc in mangaSnap.docs) {
@@ -108,14 +37,15 @@ class _UpdatesPageState extends State<UpdatesPage> {
           .doc(doc.id)
           .collection("chapters")
           .get();
-
       chapterCount += chapSnap.docs.length;
     }
 
-    setState(() {
-      totalManga = mangaSnap.docs.length;
-      totalChapters = chapterCount;
-    });
+    if (mounted) {
+      setState(() {
+        totalManga = mangaSnap.docs.length;
+        totalChapters = chapterCount;
+      });
+    }
   }
 
   bool isSameDay(DateTime a, DateTime b) {
@@ -124,62 +54,112 @@ class _UpdatesPageState extends State<UpdatesPage> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: SingleChildScrollView(
-        controller: _scrollController,
-        child: Column(
-          children: [
-            _buildBanner(),
-            _buildStats(),
-            _buildDateBar(),
+    return Scaffold(
+      backgroundColor: const Color(0xFF121212), // Dark Mode chuẩn
+      body: SafeArea(
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            /// ===== BANNER & THỐNG KÊ =====
+            SliverToBoxAdapter(
+              child: Column(
+                children: [
+                  _buildHeroBanner(),
+                  _buildGlassStats(),
+                  const SizedBox(height: 10),
+                ],
+              ),
+            ),
+
+            /// ===== THANH LỊCH (Ghim trên đầu khi cuộn) =====
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _StickyDateBarDelegate(
+                child: _buildDateBar(),
+              ),
+            ),
+
+            /// ===== DANH SÁCH TRUYỆN =====
             StreamBuilder<List<MangaModel>>(
               stream: service.getAllMangas(),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const SliverFillRemaining(
+                    child: Center(
+                        child: CircularProgressIndicator(color: Colors.orange)),
+                  );
                 }
 
                 final allMangas = snapshot.data!;
 
-                /// 🔥 LƯU NGÀY CÓ TRUYỆN
-                datesWithManga = allMangas
-                    .map((m) => DateTime(
-                        m.createdAt.year, m.createdAt.month, m.createdAt.day))
-                    .toSet();
+                // Cập nhật Set các ngày có truyện để DateBar vẽ chấm xanh
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  final newDates = allMangas
+                      .map((m) => DateTime(
+                          m.createdAt.year, m.createdAt.month, m.createdAt.day))
+                      .toSet();
+                  if (datesWithManga.length != newDates.length) {
+                    setState(() => datesWithManga = newDates);
+                  }
+                });
 
                 final mangas = allMangas
                     .where((m) => isSameDay(m.createdAt, selectedDate))
                     .toList();
 
                 if (mangas.isEmpty) {
-                  return const Center(child: Text('Không có cập nhật nào'));
+                  return SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.inbox_outlined,
+                              size: 60, color: Colors.white.withOpacity(0.2)),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Không có truyện mới cập nhật\nvào ngày này.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: Colors.white.withOpacity(0.5),
+                                fontSize: 16,
+                                height: 1.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
                 }
 
-                return GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(12),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    childAspectRatio: 0.65,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                  ),
-                  itemCount: mangas.length,
-                  itemBuilder: (context, i) {
-                    final manga = mangas[i];
-                    return MangaGridItem(
-                      manga: manga,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => MangaDetailPage(manga: manga),
-                          ),
+                return SliverPadding(
+                  padding: const EdgeInsets.only(
+                      left: 16, right: 16, top: 16, bottom: 40),
+                  sliver: SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      childAspectRatio: 0.65,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 16,
+                    ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) {
+                        final manga = mangas[i];
+                        return MangaGridItem(
+                          manga: manga,
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) =>
+                                      MangaDetailPage(manga: manga)),
+                            );
+                          },
                         );
                       },
-                    );
-                  },
+                      childCount: mangas.length,
+                    ),
+                  ),
                 );
               },
             ),
@@ -189,128 +169,211 @@ class _UpdatesPageState extends State<UpdatesPage> {
     );
   }
 
-  Widget _buildStats() {
+  // ==============================================
+  // WIDGET UI COMPONENTS
+  // ==============================================
+
+  /// BANNER CHÍNH
+  Widget _buildHeroBanner() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      padding: const EdgeInsets.all(16),
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFFE65C00),
+            Color(0xFFF9D423)
+          ], // Gradient rực rỡ mang phong cách Manga
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+              color: const Color(0xFFE65C00).withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            "TỔNG QUAN",
-            style: TextStyle(
-              color: Colors.white54,
-              fontSize: 12,
-              letterSpacing: 1.5,
-            ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(20)),
+            child: const Text("MANGABOXVN",
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2)),
           ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    const Icon(Icons.menu_book, color: Colors.orange),
-                    const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("$totalManga",
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold)),
-                        const Text("TRUYỆN",
-                            style: TextStyle(color: Colors.white54)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Row(
-                  children: [
-                    const Icon(Icons.auto_stories, color: Colors.blue),
-                    const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("$totalChapters",
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold)),
-                        const Text("CHƯƠNG",
-                            style: TextStyle(color: Colors.white54)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          )
+          const SizedBox(height: 16),
+          const Text("Khám phá vũ trụ\ntruyện tranh.",
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
+                  height: 1.2)),
+          const SizedBox(height: 8),
+          Text("Cập nhật hàng giờ, đọc không giới hạn.",
+              style: TextStyle(
+                  color: Colors.white.withOpacity(0.9),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500)),
         ],
       ),
     );
   }
 
+  /// THẺ THỐNG KÊ (HIỆU ỨNG KÍNH MỜ)
+  Widget _buildGlassStats() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E), // Xám tối
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _statItem(Icons.auto_awesome_mosaic_rounded, const Color(0xFFFF9800),
+              totalManga.toString(), "Đầu Truyện"),
+          Container(width: 1, height: 40, color: Colors.white.withOpacity(0.1)),
+          _statItem(Icons.menu_book_rounded, const Color(0xFF03A9F4),
+              totalChapters.toString(), "Chương Truyện"),
+        ],
+      ),
+    );
+  }
+
+  Widget _statItem(IconData icon, Color color, String value, String label) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+              color: color.withOpacity(0.1), shape: BoxShape.circle),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900)),
+            Text(label,
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.5),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// THANH CHỌN NGÀY CẬP NHẬT
   Widget _buildDateBar() {
     final today = DateTime.now();
-    return SizedBox(
-      height: 70,
+    return Container(
+      height: 80,
+      color:
+          const Color(0xFF121212), // Trùng màu nền Scaffold để che lại khi ghim
       child: ListView.builder(
+        physics: const BouncingScrollPhysics(),
         scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
         itemCount: 7,
         itemBuilder: (context, i) {
+          // Tính toán ngày từ Thứ 2 đến Chủ Nhật của tuần hiện tại
           final date = today.subtract(Duration(days: today.weekday - 1 - i));
-          final selected = isSameDay(date, selectedDate);
+          final isSelected = isSameDay(date, selectedDate);
           final hasManga = datesWithManga.any((d) => isSameDay(d, date));
+
+          final List<String> dayNames = [
+            'T2',
+            'T3',
+            'T4',
+            'T5',
+            'T6',
+            'T7',
+            'CN'
+          ];
+
           return GestureDetector(
             onTap: () => setState(() => selectedDate = date),
-            child: Container(
-              width: 60,
-              margin: const EdgeInsets.all(6),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              width: 55,
+              margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
               decoration: BoxDecoration(
-                color: selected
-                    ? Colors.orange
-                    : hasManga
-                        ? Colors.blue.withOpacity(0.2)
-                        : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-                border: hasManga ? Border.all(color: Colors.blue) : null,
+                gradient: isSelected
+                    ? const LinearGradient(
+                        colors: [Color(0xFFE65C00), Color(0xFFF9D423)],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter)
+                    : null,
+                color: isSelected ? null : const Color(0xFF1E1E1E),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: isSelected
+                    ? [
+                        BoxShadow(
+                            color: const Color(0xFFE65C00).withOpacity(0.4),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4))
+                      ]
+                    : [],
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+              child: Stack(
+                alignment: Alignment.center,
                 children: [
-                  Text(
-                    [
-                      'thứ Hai',
-                      'thứ Ba',
-                      'thứ Tư',
-                      'thứ Năm',
-                      'thứ Sáu',
-                      'thứ Bảy',
-                      'chủ Nhật'
-                    ][i],
-                    style: TextStyle(
-                      color: selected
-                          ? const Color.fromARGB(255, 236, 235, 235)
-                          : hasManga
-                              ? Colors.blue
-                              : Colors.white70,
-                    ),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        dayNames[i],
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: isSelected
+                              ? Colors.white.withOpacity(0.9)
+                              : Colors.white.withOpacity(0.4),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${date.day}',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: isSelected ? Colors.white : Colors.white,
+                        ),
+                      ),
+                    ],
                   ),
-                  Text(
-                    '${date.day}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: selected ? Colors.black : Colors.white,
-                    ),
-                  ),
+
+                  // Dấu chấm nhỏ (Dot) báo hiệu có truyện mới hôm đó
+                  if (hasManga && !isSelected)
+                    Positioned(
+                      bottom: 6,
+                      child: Container(
+                        width: 4,
+                        height: 4,
+                        decoration: const BoxDecoration(
+                            color: Color(0xFF03A9F4), shape: BoxShape.circle),
+                      ),
+                    )
                 ],
               ),
             ),
@@ -318,5 +381,31 @@ class _UpdatesPageState extends State<UpdatesPage> {
         },
       ),
     );
+  }
+}
+
+// ==============================================
+// KẾ THỪA ĐỂ TẠO HIỆU ỨNG GHIM (PINNED) CHO THANH LỊCH
+// ==============================================
+class _StickyDateBarDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+
+  _StickyDateBarDelegate({required this.child});
+
+  @override
+  double get minExtent => 80.0; // Chiều cao của _buildDateBar
+
+  @override
+  double get maxExtent => 80.0;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return child;
+  }
+
+  @override
+  bool shouldRebuild(_StickyDateBarDelegate oldDelegate) {
+    return true; // Luôn rebuild để cập nhật ngày được chọn
   }
 }

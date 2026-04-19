@@ -14,8 +14,17 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(),
-      home: const AuthGate(), // ✅ QUAN TRỌNG NHẤT
+      // Thiết lập Theme chung cho toàn bộ App
+      theme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF0F0F14),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF0F0F14),
+          elevation: 0,
+        ),
+      ),
+      home: const AuthGate(),
     );
   }
 }
@@ -31,9 +40,9 @@ class _MainNavigationState extends State<MainNavigation> {
   int _index = 0;
 
   final pages = [
-    UpdatesPage(),
+    const UpdatesPage(),
     const HomePage(),
-    const BrowsePage(), // ✅ QUAN TRỌNG NHẤT
+    const BrowsePage(),
     const MyShelfPage(),
     const ForumPage(),
     const ProfilePage(),
@@ -42,37 +51,66 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: pages[_index],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _index,
-        onTap: (i) => setState(() => _index = i),
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today),
-            label: 'Câp nhật',
+      // IndexedStack giúp lưu giữ trạng thái cuộn của các trang khi chuyển Tab
+      body: IndexedStack(
+        index: _index,
+        children: pages,
+      ),
+
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(color: Colors.white.withOpacity(0.05), width: 0.5),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.local_fire_department),
-            label: 'Trang chủ',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.search),
-            label: 'Duyệt',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bookmark),
-            label: 'Kệ của tôi',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.message),
-            label: 'Diễn đàn',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Hồ sơ',
-          ),
-        ],
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _index,
+          onTap: (i) => setState(() => _index = i),
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: const Color(0xFF0F0F14),
+          selectedItemColor: Colors.orangeAccent,
+          unselectedItemColor: Colors.white30,
+          selectedFontSize: 10,
+          unselectedFontSize: 10,
+          iconSize: 22,
+          elevation: 0,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.auto_awesome_rounded),
+              activeIcon:
+                  Icon(Icons.auto_awesome_rounded, color: Colors.orangeAccent),
+              label: 'Mới',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_filled),
+              activeIcon: Icon(Icons.home_filled, color: Colors.orangeAccent),
+              label: 'Home',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.explore_outlined),
+              activeIcon:
+                  Icon(Icons.explore_rounded, color: Colors.orangeAccent),
+              label: 'Duyệt',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.collections_bookmark_outlined),
+              activeIcon: Icon(Icons.collections_bookmark_rounded,
+                  color: Colors.orangeAccent),
+              label: 'Kệ sách',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.forum_outlined),
+              activeIcon: Icon(Icons.forum_rounded, color: Colors.orangeAccent),
+              label: 'Forum',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline_rounded),
+              activeIcon:
+                  Icon(Icons.person_rounded, color: Colors.orangeAccent),
+              label: 'Hồ sơ',
+            ),
+          ],
+        ),
       ),
     );
   }

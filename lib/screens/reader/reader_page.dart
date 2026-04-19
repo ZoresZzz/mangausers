@@ -34,8 +34,8 @@ class _ReaderPageState extends State<ReaderPage> {
     final doc = await FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
-        .collection('purchasedChapters')
-        .doc(chapterId)
+        .collection('unlockedChapters') // 🔥 FIX Ở ĐÂY
+        .doc('${widget.mangaId}_$chapterId') // 🔥 FIX KEY
         .get();
 
     return doc.exists;
@@ -112,7 +112,7 @@ class _ReaderPageState extends State<ReaderPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Mở khóa chương thành công")),
         );
-
+        setState(() {});
         return true;
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
